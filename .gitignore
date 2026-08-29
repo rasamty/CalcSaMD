@@ -1,0 +1,14 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio cache/options
+.vs/
+*.user
+*.suo
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.tmp
+*.Backup.tmp

@@ -1,0 +1,17 @@
+@* MainLayout wraps every page. The default Blazor WASM template gives you a
+   left-hand nav sidebar (for a multi-page app with a Home/Counter/Weather
+   menu). CalcSaMD only ever has one page, so that sidebar is removed here
+   rather than kept and left pointing at pages that don't exist — Phase 1's
+   solution intentionally deletes Pages/Counter.razor and Pages/Weather.razor
+   (see the Part 7 write-up in the plan document for why, and what the
+   default template originally contained). *@
+
+@inherits LayoutComponentBase
+
+<div class="page">
+    <main>
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>

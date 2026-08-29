@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CalcSaMD.Core\CalcSaMD.Core.csproj" />
+  </ItemGroup>
+
+  <!-- The test project below lives inside this project's own folder tree
+       (tests\CalcSaMD.Tests\), not beside it, because that's where Visual
+       Studio's "Add > New Project" put it when it was added from here.
+       Without this exclusion, CalcSaMD.Web's SDK would auto-include every
+       .cs and content file under tests\ as if it belonged to the web app
+       itself — double-compiling the test project's own files into two
+       assemblies at once. This block tells the Web project: nothing under
+       tests\ is mine. -->
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <None Remove="tests\**\*.*" />
+    <Content Remove="tests\**\*.*" />
+  </ItemGroup>
+
+</Project>

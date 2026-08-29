@@ -1,0 +1,36 @@
+@inject HttpClient Http
+
+@* Shown at the top of every page, always. This is the "which environment,
+   which version, which commit" strip you asked to have visible at all
+   times. It reads env-config.json — a plain static file sitting next to
+   index.html in wwwroot — using the same HttpClient every Blazor
+   WebAssembly app already has registered against its own site (see
+   Program.cs). No backend server is involved at any point. *@
+
+<div class="environment-badge environment-badge--@_info.EnvironmentName.ToLowerInvariant()">
+    <span class="environment-badge__env">@_info.EnvironmentName</span>
+    <span class="environment-badge__version">v@_info.Version</span>
+    <span class="environment-badge__commit">@_info.CommitSha</span>
+</div>
+
+@code {
+    private EnvironmentInfo _info = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // GetFromJsonAsync is the standard System.Net.Http.Json extension
+        // method for "fetch this URL, deserialize the JSON body". Because
+        // Program.cs registered HttpClient with BaseAddress set to this
+        // app's own origin, "env-config.json" resolves to this app's own
+        // wwwroot/env-config.json — not a call to any external service.
+        var loaded = await Http.GetFromJsonAsync<EnvironmentInfo>("env-config.json");
+
+        if (loaded is not null)
+        {
+            _info = loaded;
+        }
+        // If the fetch fails for any reason, _info keeps its default value
+        // (EnvironmentName = "LOCAL") rather than the page crashing — a
+        // deliberately simple fallback for a deliberately simple app.
+    }
+}

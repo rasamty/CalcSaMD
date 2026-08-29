@@ -1,0 +1,19 @@
+@* App.razor is the root component every Blazor WebAssembly app starts from.
+   It never changes between environments — DEV, QA, UAT and PROD all ship
+   the exact same App.razor. Everything environment-specific lives in
+   env-config.json instead (see EnvironmentBadge.razor), which is the whole
+   point of the "build once, promote unchanged" rule explained in Part 2 of
+   the plan document: if this file differed per environment, you would be
+   building four different things and calling them one release. *@
+
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(Layout.MainLayout)">
+            <p role="alert">Sorry, there's nothing at this address.</p>
+        </LayoutView>
+    </NotFound>
+</Router>

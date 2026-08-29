@@ -1,0 +1,28 @@
+/* Blazor "CSS isolation": a .razor.css file next to a .razor file is scoped
+   automatically to only that component's markup, at build time — these
+   rules can never accidentally leak onto, or clash with, any other
+   component's styles. */
+
+.environment-badge {
+    display: inline-flex;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.35rem 0.9rem;
+    border-radius: 999px;
+    font-family: Consolas, monospace;
+    font-size: 0.8rem;
+    color: white;
+    background: #6b7686;
+    margin-bottom: 1.2rem;
+}
+
+.environment-badge--local { background: #6b7686; }
+.environment-badge--dev   { background: #2e7d32; }
+.environment-badge--qa    { background: #b8860b; }
+.environment-badge--uat   { background: #8e44ad; }
+.environment-badge--prod  { background: #a01040; }
+
+.environment-badge__env {
+    font-weight: bold;
+    text-transform: uppercase;
+}

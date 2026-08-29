@@ -1,0 +1,42 @@
+@page "/"
+
+<PageTitle>CalcSaMD</PageTitle>
+
+<EnvironmentBadge />
+
+<h1>CalcSaMD — Calculator</h1>
+
+<div class="calculator">
+    <label class="calculator__field">
+        First number
+        <input type="number" @bind="_a" @bind:event="oninput" />
+    </label>
+
+    <label class="calculator__field">
+        Second number
+        <input type="number" @bind="_b" @bind:event="oninput" />
+    </label>
+
+    <button class="calculator__button" @onclick="Calculate">Add</button>
+
+    @if (_result is not null)
+    {
+        <p class="calculator__result">Result: @_result</p>
+    }
+</div>
+
+@code {
+    private double _a;
+    private double _b;
+    private double? _result;
+
+    private void Calculate()
+    {
+        // The UI never adds the numbers itself — it only calls the one
+        // method the automated test in CalcSaMD.Tests also calls. If the
+        // pipeline's test gate (Part 2.1/2.2) ever passes on a broken Add,
+        // it's because this call was bypassed, which is exactly what code
+        // review and the test suite are both there to catch.
+        _result = CalculatorLogic.Add(_a, _b);
+    }
+}

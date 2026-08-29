@@ -1,0 +1,28 @@
+# GitVersion.yml — lives at the repository ROOT (next to CalcSaMD.sln), not
+# inside src/ or tests/, because GitVersion inspects the whole git history/
+# branch structure, not any one project.
+#
+# This file is created now, in Phase 1, purely so it's committed alongside
+# the very first version of the app and so you can see it in your repo from
+# day one. It has NO effect yet — nothing in Phase 1 runs GitVersion. It only
+# starts actually computing version numbers once the Phase 3 pipeline calls
+# the GitVersion tool in ci.yml/release.yml. Part 4 of the plan document
+# explains the full MAJOR/MINOR/PATCH bump-rule table this config produces;
+# this file is the machine-readable version of that same table.
+#
+# "workflow: GitHubFlow/v1" selects GitVersion's built-in preset for exactly
+# the branching model this project uses: a long-lived main branch, short-
+# lived feature/* branches merged into it, and hotfix/* branches. Using the
+# named preset (rather than hand-rolling every branch regex) is deliberate:
+# it is easier to read, easier to audit, and less likely to silently drift
+# from GitVersion's own defaults as new versions of the tool are released.
+workflow: GitHubFlow/v1
+
+# By default GitHubFlow/v1 already treats "main" as the release branch and
+# "feature/*"/"hotfix/*" as the branches that bump MINOR/PATCH respectively.
+# The one thing this project adds on top of the preset is how MAJOR bumps
+# happen: never automatically, only when a commit message explicitly
+# contains "+semver: major" (see Part 4.2 of the plan document). That is
+# GitVersion's own default increment-trigger syntax, not a custom feature —
+# it is listed here only so it is visible in the repo, not because the
+# preset needs overriding to get it.
