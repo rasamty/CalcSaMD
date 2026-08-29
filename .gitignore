@@ -6,9 +6,9 @@
 .vs/
 *.user
 *.suo
+*.tmp
+*.Backup.tmp
 
 # OS junk
 .DS_Store
 Thumbs.db
-*.tmp
-*.Backup.tmp
