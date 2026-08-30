@@ -1,0 +1,270 @@
+name: Release
+
+# The normal release path (Part 2.1/2.2). Fires once a Pull Request merges
+# into main. From there it is fully automatic through DEV and QA, and
+# pauses twice for a human: QA_1 on the UAT environment, PO_1 on the PROD
+# environment. Nothing in this file can skip a stage - each job's "needs:"
+# points only at the job immediately before it, so the only path through
+# is the one drawn in Part 2's state diagram.
+on:
+  push:
+    branches:
+      - main
+
+# Prevents two merges landing close together from running two releases at
+# the same time and racing each other through the same four environments.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Computes the version ONCE. Every later job reads its outputs rather
+  # than recomputing anything - this is what "the version is computed
+  # once" (Part 4.3) means concretely.
+  # ---------------------------------------------------------------------
+  gitversion:
+    name: gitversion
+    runs-on: ubuntu-latest
+    outputs:
+      semVer: ${{ steps.gitversion.outputs.semVer }}
+      majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
+      shortSha: ${{ steps.gitversion.outputs.shortSha }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v4.7.0
+        with:
+          versionSpec: '6.8.x'
+
+      - name: Run GitVersion
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v4.7.0
+
+  # ---------------------------------------------------------------------
+  # Compiles and publishes the WASM app exactly ONCE. The published output
+  # is uploaded as the "site" artifact - every deploy-* job below downloads
+  # this same artifact rather than rebuilding, which is what "promote
+  # unchanged" (Part 4.3, EnvironmentInfo.cs) means concretely. This job
+  # does NOT run the test suite - it only proves the app compiles, which is
+  # everything DEV requires (Part 2.1: DEV "always deploys").
+  # ---------------------------------------------------------------------
+  build:
+    name: build
+    needs: gitversion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish CalcSaMD.Web
+        run: dotnet publish src/CalcSaMD.Web/CalcSaMD.Web.csproj --configuration Release --output publish
+
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: publish/wwwroot
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # The real DEV -> QA gate (Part 2.1). Runs the unit test suite. Does
+  # NOT touch the "site" artifact at all - it exists purely to produce a
+  # pass/fail result that deploy-qa's "needs:" can react to.
+  # ---------------------------------------------------------------------
+  test:
+    name: test
+    needs: gitversion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore CalcSaMD.slnx
+
+      - name: Test
+        run: dotnet test src/CalcSaMD.Web/tests/CalcSaMD.Tests/CalcSaMD.Tests.csproj --configuration Release
+
+  # ---------------------------------------------------------------------
+  # DEV: automatic, no reviewer, gated only on "build" succeeding
+  # (Part 2.1: "Nothing - always deploys").
+  # ---------------------------------------------------------------------
+  deploy-dev:
+    name: deploy-dev
+    needs: [build, gitversion]
+    runs-on: ubuntu-latest
+    environment: DEV
+    steps:
+      - name: Download site artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: site
+          path: site
+
+      - name: Write env-config.json for DEV
+        run: |
+          cat > site/env-config.json <<EOF
+          {
+            "EnvironmentName": "DEV",
+            "Version": "${{ needs.gitversion.outputs.semVer }}",
+            "CommitSha": "${{ needs.gitversion.outputs.shortSha }}"
+          }
+          EOF
+          cat site/env-config.json
+
+      - name: Upload DEV site
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-DEV
+          path: site
+          retention-days: 14
+
+      - name: Deploy (placeholder until Phase 4/7)
+        run: |
+          echo "This step will run azure/static-web-apps-deploy@v1 against the DEV Static Web App, once Phase 4's Terraform creates it and Phase 7 wires in the deployment token."
+          echo "For now: download the 'site-DEV' artifact from this run to see exactly what would have been deployed - env-config.json included."
+
+  # ---------------------------------------------------------------------
+  # QA: automatic, no reviewer, gated on BOTH deploy-dev succeeding AND
+  # the unit tests passing (Part 2.1: "only if the automated unit tests
+  # pass ... a failure stops here").
+  # ---------------------------------------------------------------------
+  deploy-qa:
+    name: deploy-qa
+    needs: [deploy-dev, test, gitversion]
+    runs-on: ubuntu-latest
+    environment: QA
+    steps:
+      - name: Download site artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: site
+          path: site
+
+      - name: Write env-config.json for QA
+        run: |
+          cat > site/env-config.json <<EOF
+          {
+            "EnvironmentName": "QA",
+            "Version": "${{ needs.gitversion.outputs.semVer }}",
+            "CommitSha": "${{ needs.gitversion.outputs.shortSha }}"
+          }
+          EOF
+
+      - name: Upload QA site
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-QA
+          path: site
+          retention-days: 14
+
+      - name: Deploy (placeholder until Phase 4/7)
+        run: echo "Placeholder - see deploy-dev's comment. Same idea, QA Static Web App."
+
+  # ---------------------------------------------------------------------
+  # UAT: manual. The UAT GitHub Environment has QA_1 configured as a
+  # required reviewer (Part 8.5) - this job simply pauses right here in
+  # the Actions UI until QA_1 approves or rejects it. Rejecting fails
+  # this job, and since deploy-prod's "needs:" points only at this job,
+  # nothing further runs - the change is "sent back to DEV" in the sense
+  # that DEV/QA are as far as it got; trying again means a new commit.
+  # ---------------------------------------------------------------------
+  deploy-uat:
+    name: deploy-uat
+    needs: [deploy-qa, gitversion]
+    runs-on: ubuntu-latest
+    environment: UAT
+    steps:
+      - name: Download site artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: site
+          path: site
+
+      - name: Write env-config.json for UAT
+        run: |
+          cat > site/env-config.json <<EOF
+          {
+            "EnvironmentName": "UAT",
+            "Version": "${{ needs.gitversion.outputs.semVer }}",
+            "CommitSha": "${{ needs.gitversion.outputs.shortSha }}"
+          }
+          EOF
+
+      - name: Upload UAT site
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-UAT
+          path: site
+          retention-days: 14
+
+      - name: Deploy (placeholder until Phase 4/7)
+        run: echo "Placeholder - see deploy-dev's comment. Same idea, UAT Static Web App."
+
+  # ---------------------------------------------------------------------
+  # PROD: manual. The PROD Environment has PO_1 configured as a required
+  # reviewer. On approval: deploys, then strips the pre-release label and
+  # tags the exact commit that just went live - the same tag Part 2.3's
+  # hotfix path later branches from.
+  # ---------------------------------------------------------------------
+  deploy-prod:
+    name: deploy-prod
+    needs: [deploy-uat, gitversion]
+    runs-on: ubuntu-latest
+    environment: PROD
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download site artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: site
+          path: site
+
+      - name: Write env-config.json for PROD
+        run: |
+          cat > site/env-config.json <<EOF
+          {
+            "EnvironmentName": "PROD",
+            "Version": "${{ needs.gitversion.outputs.majorMinorPatch }}",
+            "CommitSha": "${{ needs.gitversion.outputs.shortSha }}"
+          }
+          EOF
+
+      - name: Upload PROD site
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-PROD
+          path: site
+          retention-days: 14
+
+      - name: Deploy (placeholder until Phase 4/7)
+        run: echo "Placeholder - see deploy-dev's comment. Same idea, PROD Static Web App."
+
+      - name: Tag the release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ needs.gitversion.outputs.majorMinorPatch }}" -m "Release v${{ needs.gitversion.outputs.majorMinorPatch }}"
+          git push origin "v${{ needs.gitversion.outputs.majorMinorPatch }}"

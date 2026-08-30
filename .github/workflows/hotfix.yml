@@ -1,0 +1,241 @@
+name: Hotfix
+
+# The hotfix path (Part 2.3). Fires on a push to a hotfix/* branch - one
+# you cut from the current PROD release tag, never from main:
+#   git fetch --tags
+#   git checkout -b hotfix/<short-description> vX.Y.Z
+#   ... fix, commit ...
+#   git push -u origin hotfix/<short-description>
+# Goes DEV -> QA exactly like release.yml, then skips the UAT
+# *environment* - but keeps both QA_1's and PO_1's sign-off, per Part
+# 2.3's second addition. Ends by opening the back-merge Pull Request into
+# main automatically, per Part 2.3's third addition.
+on:
+  push:
+    branches:
+      - 'hotfix/**'
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  gitversion:
+    name: gitversion
+    runs-on: ubuntu-latest
+    outputs:
+      semVer: ${{ steps.gitversion.outputs.semVer }}
+      majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
+      shortSha: ${{ steps.gitversion.outputs.shortSha }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v4.7.0
+        with:
+          versionSpec: '6.8.x'
+
+      - name: Run GitVersion
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v4.7.0
+
+  build:
+    name: build
+    needs: gitversion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish CalcSaMD.Web
+        run: dotnet publish src/CalcSaMD.Web/CalcSaMD.Web.csproj --configuration Release --output publish
+
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: publish/wwwroot
+          retention-days: 14
+
+  test:
+    name: test
+    needs: gitversion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore CalcSaMD.slnx
+
+      - name: Test
+        run: dotnet test src/CalcSaMD.Web/tests/CalcSaMD.Tests/CalcSaMD.Tests.csproj --configuration Release
+
+  deploy-dev:
+    name: deploy-dev
+    needs: [build, gitversion]
+    runs-on: ubuntu-latest
+    environment: DEV
+    steps:
+      - name: Download site artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: site
+          path: site
+
+      - name: Write env-config.json for DEV
+        run: |
+          cat > site/env-config.json <<EOF
+          {
+            "EnvironmentName": "DEV",
+            "Version": "${{ needs.gitversion.outputs.semVer }}",
+            "CommitSha": "${{ needs.gitversion.outputs.shortSha }}"
+          }
+          EOF
+
+      - name: Upload DEV site
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-DEV
+          path: site
+          retention-days: 14
+
+      - name: Deploy (placeholder until Phase 4/7)
+        run: echo "Placeholder - see release.yml's deploy-dev. Same idea, DEV Static Web App."
+
+  deploy-qa:
+    name: deploy-qa
+    needs: [deploy-dev, test, gitversion]
+    runs-on: ubuntu-latest
+    environment: QA
+    steps:
+      - name: Download site artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: site
+          path: site
+
+      - name: Write env-config.json for QA
+        run: |
+          cat > site/env-config.json <<EOF
+          {
+            "EnvironmentName": "QA",
+            "Version": "${{ needs.gitversion.outputs.semVer }}",
+            "CommitSha": "${{ needs.gitversion.outputs.shortSha }}"
+          }
+          EOF
+
+      - name: Upload QA site
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-QA
+          path: site
+          retention-days: 14
+
+      - name: Deploy (placeholder until Phase 4/7)
+        run: echo "Placeholder - see release.yml's deploy-dev. Same idea, QA Static Web App."
+
+  # ---------------------------------------------------------------------
+  # QA_1's sign-off, WITHOUT a UAT deployment. This job deliberately does
+  # nothing but target the UAT environment - that's the one place QA_1 is
+  # configured as a required reviewer (Part 8.5), so this is the only way
+  # to reuse that exact approval gate. No artifact is touched, nothing is
+  # "deployed" - Part 2.3 is explicit that only the UAT *environment*
+  # (the staging site) is skipped in a hotfix, not QA_1's sign-off itself.
+  # ---------------------------------------------------------------------
+  qa1-signoff:
+    name: qa1-signoff
+    needs: deploy-qa
+    runs-on: ubuntu-latest
+    environment: UAT
+    steps:
+      - name: Record sign-off
+        run: echo "QA_1 approved promoting this hotfix to PROD. No UAT site is deployed on the hotfix path (Part 2.3)."
+
+  deploy-prod:
+    name: deploy-prod
+    needs: [qa1-signoff, gitversion]
+    runs-on: ubuntu-latest
+    environment: PROD
+    outputs:
+      version: ${{ needs.gitversion.outputs.majorMinorPatch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download site artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: site
+          path: site
+
+      - name: Write env-config.json for PROD
+        run: |
+          cat > site/env-config.json <<EOF
+          {
+            "EnvironmentName": "PROD",
+            "Version": "${{ needs.gitversion.outputs.majorMinorPatch }}",
+            "CommitSha": "${{ needs.gitversion.outputs.shortSha }}"
+          }
+          EOF
+
+      - name: Upload PROD site
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-PROD
+          path: site
+          retention-days: 14
+
+      - name: Deploy (placeholder until Phase 4/7)
+        run: echo "Placeholder - see release.yml's deploy-dev. Same idea, PROD Static Web App."
+
+      - name: Tag the release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ needs.gitversion.outputs.majorMinorPatch }}" -m "Hotfix v${{ needs.gitversion.outputs.majorMinorPatch }}"
+          git push origin "v${{ needs.gitversion.outputs.majorMinorPatch }}"
+
+  # ---------------------------------------------------------------------
+  # Part 2.3's third addition: open the back-merge Pull Request
+  # automatically once the hotfix is confirmed live in PROD. A human
+  # still has to review and merge it - this only removes the chance of
+  # forgetting to.
+  # ---------------------------------------------------------------------
+  open-backmerge-pr:
+    name: open-backmerge-pr
+    needs: deploy-prod
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Open Pull Request back into main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base main \
+            --head "${{ github.ref_name }}" \
+            --title "Back-merge ${{ github.ref_name }} (v${{ needs.deploy-prod.outputs.version }}) into main" \
+            --body "Automatic back-merge opened by hotfix.yml after v${{ needs.deploy-prod.outputs.version }} deployed to PROD. Review and merge to keep main in sync with the released hotfix (Part 2.3)." \
+            || echo "PR may already exist for this branch - continuing."
