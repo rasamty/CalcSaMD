@@ -1,0 +1,39 @@
+name: CI
+
+# Runs on every push to any branch except main (main can't be pushed to
+# directly anyway - branch protection, Part 8.4), and on every Pull Request
+# targeting main. Build + test only. Never deploys anything. This is the
+# check that "Require status checks to pass before merging" (Part 8.4)
+# is turned on against, once this file exists to produce one.
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore CalcSaMD.slnx
+
+      - name: Build
+        run: dotnet build CalcSaMD.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test src/CalcSaMD.Web/tests/CalcSaMD.Tests/CalcSaMD.Tests.csproj --configuration Release --no-build
