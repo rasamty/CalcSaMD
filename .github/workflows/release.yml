@@ -10,6 +10,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'RELEASE_LOG.md'
 
 # Prevents two merges landing close together from running two releases at
 # the same time and racing each other through the same four environments.
@@ -19,6 +21,8 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
+  actions: read
 
 jobs:
   # ---------------------------------------------------------------------
@@ -273,10 +277,10 @@ jobs:
   # Part 12.4: writes one entry to RELEASE_LOG.md per successful release,
   # built from this run's REAL GitHub Environment approval history - not a
   # guess at who approved, the actual reviewer records GitHub already
-  # keeps for every environment on this run. Needs its own job-level
-  # "actions: read": this workflow's top-level `permissions:` block above
-  # already set every scope it didn't name to none (Part 12.3), and
-  # reading approval history is an `actions` scope operation.
+  # keeps for every environment on this run.
+  # Protected main cannot be pushed directly (GH006), so the log is
+  # committed on chore/release-log-v* and opened as a Pull Request.
+  # paths-ignore above stops merging that PR from starting another Release.
   # ---------------------------------------------------------------------
   release-log:
     name: release-log
@@ -285,6 +289,7 @@ jobs:
     permissions:
       contents: write
       actions: read
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -319,14 +324,17 @@ jobs:
       - name: Add to this run's job summary
         run: cat entry.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Commit and push RELEASE_LOG.md
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add RELEASE_LOG.md
-          git commit -m "docs: record release v${{ needs.gitversion.outputs.majorMinorPatch }} in RELEASE_LOG.md" || { echo "Nothing to commit."; exit 0; }
-          git pull --rebase origin main
-          git push origin main
+      - name: Open pull request for RELEASE_LOG.md
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "docs: record release v${{ needs.gitversion.outputs.majorMinorPatch }} in RELEASE_LOG.md"
+          branch: chore/release-log-v${{ needs.gitversion.outputs.majorMinorPatch }}
+          title: "docs: RELEASE_LOG for v${{ needs.gitversion.outputs.majorMinorPatch }}"
+          body: |
+            Automated log for Release run ${{ github.run_id }}.
+            Merge this PR so RELEASE_LOG.md lands on main through a pull request (protected main rejects a direct push).
+          add-paths: RELEASE_LOG.md
 
   # ---------------------------------------------------------------------
   # Part 12.5: an entirely optional release notification. Off unless you
