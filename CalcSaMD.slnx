@@ -2,6 +2,11 @@
   <Folder Name="/src/">
     <Project Path="src/CalcSaMD.Core/CalcSaMD.Core.csproj" />
     <Project Path="src/CalcSaMD.Web/CalcSaMD.Web.csproj" />
+    <Project Path="src/PipelineSimulator/PipelineSimulator.csproj" />
+  </Folder>
+  <Folder Name="/src/PipelineSimulator/" />
+  <Folder Name="/src/PipelineSimulator/tests/">
+    <Project Path="src/PipelineSimulator/tests/PipelineSimulator.Tests/PipelineSimulator.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="src/CalcSaMD.Web/tests/CalcSaMD.Tests/CalcSaMD.Tests.csproj" />

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PipelineSimulator</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+  </PropertyGroup>
+
+  <!-- Same reason as CalcSaMD.Web.csproj's identical block: the test project
+       lives inside this project's own folder tree (tests\), so without this
+       exclusion the default SDK glob would compile every .cs file under
+       tests\ into this Exe assembly too, as well as into
+       PipelineSimulator.Tests.csproj - double-compiling the same files. -->
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <None Remove="tests\**\*.*" />
+    <Content Remove="tests\**\*.*" />
+  </ItemGroup>
+
+</Project>
