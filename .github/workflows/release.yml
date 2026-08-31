@@ -268,3 +268,90 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "v${{ needs.gitversion.outputs.majorMinorPatch }}" -m "Release v${{ needs.gitversion.outputs.majorMinorPatch }}"
           git push origin "v${{ needs.gitversion.outputs.majorMinorPatch }}"
+
+  # ---------------------------------------------------------------------
+  # Part 12.4: writes one entry to RELEASE_LOG.md per successful release,
+  # built from this run's REAL GitHub Environment approval history - not a
+  # guess at who approved, the actual reviewer records GitHub already
+  # keeps for every environment on this run. Needs its own job-level
+  # "actions: read": this workflow's top-level `permissions:` block above
+  # already set every scope it didn't name to none (Part 12.3), and
+  # reading approval history is an `actions` scope operation.
+  # ---------------------------------------------------------------------
+  release-log:
+    name: release-log
+    needs: [gitversion, deploy-prod]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch this run's approval history
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/approvals" > approvals.json
+
+      - name: Build this release's log entry
+        run: |
+          {
+            echo "## v${{ needs.gitversion.outputs.majorMinorPatch }} — $(date -u +"%Y-%m-%d %H:%M UTC")"
+            echo
+            echo "- Commit: \`${{ needs.gitversion.outputs.shortSha }}\`"
+            echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            jq -r '.[] | "- **" + ([.environments[].name] | join(", ")) + "** " + .state + " by @" + .user.login + (if (.comment // "") != "" then " — \"" + .comment + "\"" else "" end)' approvals.json
+            echo
+          } > entry.md
+          cat entry.md
+
+      - name: Prepend entry to RELEASE_LOG.md
+        run: |
+          if [ ! -s RELEASE_LOG.md ]; then
+            printf '%s\n' "# CalcSaMD Release Log" "" "Auto-written by release.yml/hotfix.yml's release-log job, newest release first. Never hand-edited." "" > RELEASE_LOG.md
+          fi
+          { head -n 4 RELEASE_LOG.md; cat entry.md; tail -n +5 RELEASE_LOG.md; } > RELEASE_LOG.new
+          mv RELEASE_LOG.new RELEASE_LOG.md
+
+      - name: Add to this run's job summary
+        run: cat entry.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit and push RELEASE_LOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add RELEASE_LOG.md
+          git commit -m "docs: record release v${{ needs.gitversion.outputs.majorMinorPatch }} in RELEASE_LOG.md" || { echo "Nothing to commit."; exit 0; }
+          git pull --rebase origin main
+          git push origin main
+
+  # ---------------------------------------------------------------------
+  # Part 12.5: an entirely optional release notification. Off unless you
+  # add a RELEASE_WEBHOOK_URL repository secret. Secrets can't be tested
+  # directly in an `if:` (GitHub's own docs say so, and name this exact
+  # workaround) - so the secret is copied into a job-level env var first,
+  # and it's that env var, not the secret, that the step's `if:` checks.
+  # ---------------------------------------------------------------------
+  notify:
+    name: notify
+    needs: [gitversion, deploy-prod]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_WEBHOOK_URL }}
+    steps:
+      - name: Post release notification
+        if: env.RELEASE_WEBHOOK_URL != ''
+        run: |
+          curl -sf -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"text\":\"CalcSaMD v${{ needs.gitversion.outputs.majorMinorPatch }} deployed to PROD: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            "$RELEASE_WEBHOOK_URL"
+
+      - name: Nothing to notify
+        if: env.RELEASE_WEBHOOK_URL == ''
+        run: echo "No RELEASE_WEBHOOK_URL secret configured - skipping notification. See Part 12.5 to add one."
