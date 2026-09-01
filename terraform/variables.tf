@@ -6,6 +6,6 @@ variable "location" {
 
 variable "domain_name" {
   type        = string
-  description = "Your root domain, e.g. \"example.com\" - left empty until Phase 7. While empty, all four Static Web Apps are created with no custom domain at all, reachable only at their own *.azurestaticapps.net address."
-  default     = ""
+  description = "Your root domain. Set for real in Phase 7 (Part 13) - repriori.com, registered with GoDaddy. While empty, all four Static Web Apps are created with no custom domain at all, reachable only at their own *.azurestaticapps.net address."
+  default     = "repriori.com"
 }
