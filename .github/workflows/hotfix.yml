@@ -22,6 +22,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  actions: read
 
 jobs:
   gitversion:
@@ -152,14 +153,6 @@ jobs:
       - name: Deploy (placeholder until Phase 4/7)
         run: echo "Placeholder - see release.yml's deploy-dev. Same idea, QA Static Web App."
 
-  # ---------------------------------------------------------------------
-  # QA_1's sign-off, WITHOUT a UAT deployment. This job deliberately does
-  # nothing but target the UAT environment - that's the one place QA_1 is
-  # configured as a required reviewer (Part 8.5), so this is the only way
-  # to reuse that exact approval gate. No artifact is touched, nothing is
-  # "deployed" - Part 2.3 is explicit that only the UAT *environment*
-  # (the staging site) is skipped in a hotfix, not QA_1's sign-off itself.
-  # ---------------------------------------------------------------------
   qa1-signoff:
     name: qa1-signoff
     needs: deploy-qa
@@ -215,12 +208,83 @@ jobs:
           git tag -a "v${{ needs.gitversion.outputs.majorMinorPatch }}" -m "Hotfix v${{ needs.gitversion.outputs.majorMinorPatch }}"
           git push origin "v${{ needs.gitversion.outputs.majorMinorPatch }}"
 
-  # ---------------------------------------------------------------------
-  # Part 2.3's third addition: open the back-merge Pull Request
-  # automatically once the hotfix is confirmed live in PROD. A human
-  # still has to review and merge it - this only removes the chance of
-  # forgetting to.
-  # ---------------------------------------------------------------------
+  release-log:
+    name: release-log
+    needs: [gitversion, deploy-prod]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch this run's approval history
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/approvals" > approvals.json
+
+      - name: Build this release's log entry
+        run: |
+          {
+            echo "## v${{ needs.gitversion.outputs.majorMinorPatch }} (hotfix) — $(date -u +"%Y-%m-%d %H:%M UTC")"
+            echo
+            echo "- Branch: \`${{ github.ref_name }}\`"
+            echo "- Commit: \`${{ needs.gitversion.outputs.shortSha }}\`"
+            echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            jq -r '.[] | "- **" + ([.environments[].name] | join(", ")) + "** " + .state + " by @" + .user.login + (if (.comment // "") != "" then " — \"" + .comment + "\"" else "" end) + (if ([.environments[].name] | index("UAT")) then " (sign-off only - no UAT site deployed on the hotfix path)" else "" end)' approvals.json
+            echo
+          } > entry.md
+          cat entry.md
+
+      - name: Prepend entry to RELEASE_LOG.md
+        run: |
+          if [ ! -s RELEASE_LOG.md ]; then
+            printf '%s\n' "# CalcSaMD Release Log" "" "Auto-written by release.yml/hotfix.yml's release-log job, newest release first. Never hand-edited." "" > RELEASE_LOG.md
+          fi
+          { head -n 4 RELEASE_LOG.md; cat entry.md; tail -n +5 RELEASE_LOG.md; } > RELEASE_LOG.new
+          mv RELEASE_LOG.new RELEASE_LOG.md
+
+      - name: Add to this run's job summary
+        run: cat entry.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open pull request for RELEASE_LOG.md
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "docs: record hotfix v${{ needs.gitversion.outputs.majorMinorPatch }} in RELEASE_LOG.md"
+          branch: chore/release-log-hotfix-v${{ needs.gitversion.outputs.majorMinorPatch }}
+          title: "docs: RELEASE_LOG for hotfix v${{ needs.gitversion.outputs.majorMinorPatch }}"
+          body: |
+            Automated hotfix log for run ${{ github.run_id }}.
+            Merge this PR so RELEASE_LOG.md lands on main through a pull request.
+          add-paths: RELEASE_LOG.md
+          base: main
+
+  notify:
+    name: notify
+    needs: [gitversion, deploy-prod]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_WEBHOOK_URL }}
+    steps:
+      - name: Post release notification
+        if: env.RELEASE_WEBHOOK_URL != ''
+        run: |
+          curl -sf -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"text\":\"CalcSaMD v${{ needs.gitversion.outputs.majorMinorPatch }} (hotfix) deployed to PROD: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            "$RELEASE_WEBHOOK_URL"
+
+      - name: Nothing to notify
+        if: env.RELEASE_WEBHOOK_URL == ''
+        run: echo "No RELEASE_WEBHOOK_URL secret configured - skipping notification. See Part 12.5 to add one."
+
   open-backmerge-pr:
     name: open-backmerge-pr
     needs: deploy-prod
