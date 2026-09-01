@@ -22,6 +22,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  actions: read
 
 jobs:
   gitversion:
@@ -152,14 +153,6 @@ jobs:
       - name: Deploy (placeholder until Phase 4/7)
         run: echo "Placeholder - see release.yml's deploy-dev. Same idea, QA Static Web App."
 
-  # ---------------------------------------------------------------------
-  # QA_1's sign-off, WITHOUT a UAT deployment. This job deliberately does
-  # nothing but target the UAT environment - that's the one place QA_1 is
-  # configured as a required reviewer (Part 8.5), so this is the only way
-  # to reuse that exact approval gate. No artifact is touched, nothing is
-  # "deployed" - Part 2.3 is explicit that only the UAT *environment*
-  # (the staging site) is skipped in a hotfix, not QA_1's sign-off itself.
-  # ---------------------------------------------------------------------
   qa1-signoff:
     name: qa1-signoff
     needs: deploy-qa
@@ -215,14 +208,6 @@ jobs:
           git tag -a "v${{ needs.gitversion.outputs.majorMinorPatch }}" -m "Hotfix v${{ needs.gitversion.outputs.majorMinorPatch }}"
           git push origin "v${{ needs.gitversion.outputs.majorMinorPatch }}"
 
-  # ---------------------------------------------------------------------
-  # Same job as release.yml's release-log, with two small differences:
-  # the log entry is labelled "(hotfix)" so a reader can tell the two
-  # kinds of release apart at a glance, and the approval history here
-  # will show QA_1's sign-off against the UAT environment name even
-  # though no UAT site was ever deployed (Part 2.3, Part 9.4) - that's
-  # expected, not a bug, and the log entry says so.
-  # ---------------------------------------------------------------------
   release-log:
     name: release-log
     needs: [gitversion, deploy-prod]
@@ -230,6 +215,7 @@ jobs:
     permissions:
       contents: write
       actions: read
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -265,20 +251,19 @@ jobs:
       - name: Add to this run's job summary
         run: cat entry.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Commit and push RELEASE_LOG.md
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add RELEASE_LOG.md
-          git commit -m "docs: record hotfix v${{ needs.gitversion.outputs.majorMinorPatch }} in RELEASE_LOG.md" || { echo "Nothing to commit."; exit 0; }
-          git pull --rebase origin main
-          git push origin main
+      - name: Open pull request for RELEASE_LOG.md
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "docs: record hotfix v${{ needs.gitversion.outputs.majorMinorPatch }} in RELEASE_LOG.md"
+          branch: chore/release-log-hotfix-v${{ needs.gitversion.outputs.majorMinorPatch }}
+          title: "docs: RELEASE_LOG for hotfix v${{ needs.gitversion.outputs.majorMinorPatch }}"
+          body: |
+            Automated hotfix log for run ${{ github.run_id }}.
+            Merge this PR so RELEASE_LOG.md lands on main through a pull request.
+          add-paths: RELEASE_LOG.md
+          base: main
 
-  # ---------------------------------------------------------------------
-  # Same optional webhook as release.yml's notify - see Part 12.5. One
-  # repository secret (RELEASE_WEBHOOK_URL) covers both pipelines; there's
-  # no separate hotfix-only webhook to configure.
-  # ---------------------------------------------------------------------
   notify:
     name: notify
     needs: [gitversion, deploy-prod]
@@ -300,12 +285,6 @@ jobs:
         if: env.RELEASE_WEBHOOK_URL == ''
         run: echo "No RELEASE_WEBHOOK_URL secret configured - skipping notification. See Part 12.5 to add one."
 
-  # ---------------------------------------------------------------------
-  # Part 2.3's third addition: open the back-merge Pull Request
-  # automatically once the hotfix is confirmed live in PROD. A human
-  # still has to review and merge it - this only removes the chance of
-  # forgetting to.
-  # ---------------------------------------------------------------------
   open-backmerge-pr:
     name: open-backmerge-pr
     needs: deploy-prod
