@@ -118,8 +118,15 @@ jobs:
           path: site
           retention-days: 14
 
-      - name: Deploy (placeholder until Phase 4/7)
-        run: echo "Placeholder - see release.yml's deploy-dev. Same idea, DEV Static Web App."
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "site"
+          output_location: ""
+          skip_app_build: true
 
   deploy-qa:
     name: deploy-qa
@@ -150,8 +157,15 @@ jobs:
           path: site
           retention-days: 14
 
-      - name: Deploy (placeholder until Phase 4/7)
-        run: echo "Placeholder - see release.yml's deploy-dev. Same idea, QA Static Web App."
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "site"
+          output_location: ""
+          skip_app_build: true
 
   qa1-signoff:
     name: qa1-signoff
@@ -198,8 +212,15 @@ jobs:
           path: site
           retention-days: 14
 
-      - name: Deploy (placeholder until Phase 4/7)
-        run: echo "Placeholder - see release.yml's deploy-dev. Same idea, PROD Static Web App."
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "site"
+          output_location: ""
+          skip_app_build: true
 
       - name: Tag the release
         run: |

@@ -141,10 +141,20 @@ jobs:
           path: site
           retention-days: 14
 
-      - name: Deploy (placeholder until Phase 4/7)
-        run: |
-          echo "This step will run azure/static-web-apps-deploy@v1 against the DEV Static Web App, once Phase 4's Terraform creates it and Phase 7 wires in the deployment token."
-          echo "For now: download the 'site-DEV' artifact from this run to see exactly what would have been deployed - env-config.json included."
+      # Part 13.3: azure_static_web_apps_api_token resolves from this
+      # job's own GitHub Environment secret - the same secret NAME
+      # (AZURE_STATIC_WEB_APPS_API_TOKEN) is reused in every deploy-*
+      # job, each scoped to that job's own Environment, holding a
+      # different real value per environment (Part 13.2).
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "site"
+          output_location: ""
+          skip_app_build: true
 
   # ---------------------------------------------------------------------
   # QA: automatic, no reviewer, gated on BOTH deploy-dev succeeding AND
@@ -180,8 +190,15 @@ jobs:
           path: site
           retention-days: 14
 
-      - name: Deploy (placeholder until Phase 4/7)
-        run: echo "Placeholder - see deploy-dev's comment. Same idea, QA Static Web App."
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "site"
+          output_location: ""
+          skip_app_build: true
 
   # ---------------------------------------------------------------------
   # UAT: manual. The UAT GitHub Environment has QA_1 configured as a
@@ -220,8 +237,15 @@ jobs:
           path: site
           retention-days: 14
 
-      - name: Deploy (placeholder until Phase 4/7)
-        run: echo "Placeholder - see deploy-dev's comment. Same idea, UAT Static Web App."
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "site"
+          output_location: ""
+          skip_app_build: true
 
   # ---------------------------------------------------------------------
   # PROD: manual. The PROD Environment has PO_1 configured as a required
@@ -263,8 +287,15 @@ jobs:
           path: site
           retention-days: 14
 
-      - name: Deploy (placeholder until Phase 4/7)
-        run: echo "Placeholder - see deploy-dev's comment. Same idea, PROD Static Web App."
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "site"
+          output_location: ""
+          skip_app_build: true
 
       - name: Tag the release
         run: |
