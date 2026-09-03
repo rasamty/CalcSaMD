@@ -12,3 +12,6 @@
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Terraform local plugin/cache — never commit
+**/.terraform/
